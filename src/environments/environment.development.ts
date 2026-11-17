@@ -1,0 +1,5 @@
+// Configuración de desarrollo (`ng serve`). Perfil https de Gestion-Siniestros-Api.
+export const environment = {
+  production: false,
+  apiUrl: 'https://localhost:7080/api/v1',
+};
