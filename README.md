@@ -57,15 +57,24 @@ En producción, /api/v1 debe apuntar a la API mediante el mismo origen o un prox
     src/
       environments/                 URL de la API por entorno
       app/
+        app.component.ts             Componente raíz
+        app.component.html           Plantilla del componente raíz
+        app.component.css            Estilos del componente raíz
         app.config.ts               Providers de router, HttpClient y zoneless
         app.routes.ts               Rutas con carga diferida
         claims/
           models/claim.ts           Contratos JSON y etiquetas de estado
           services/claim.service.ts Llamadas HTTP a la API
           pages/
-            claim-list/             Listado, búsqueda y filtro
-            claim-form/             Alta y edición con validaciones
-            claim-detail/           Detalle, historial y acciones
+            claim-list/
+              claim-list.component.ts   Lógica del listado, búsqueda y filtro
+              claim-list.component.html Plantilla del listado
+            claim-form/
+              claim-form.component.ts   Alta y edición con validaciones
+              claim-form.component.html Plantilla del formulario
+            claim-detail/
+              claim-detail.component.ts   Detalle, historial y acciones
+              claim-detail.component.html Plantilla del detalle
         shared/
           http-error.ts             Conversión de errores HTTP para la interfaz
           navigation-notice.ts      Mensajes de confirmación entre pantallas
