@@ -104,7 +104,7 @@ Las rutas desconocidas redirigen al listado.
 
 - La búsqueda por póliza coincide desde el inicio del número y se puede combinar con el filtro por estado.
 - Los campos de texto son obligatorios, se recortan espacios externos y respetan las longitudes de la API: 50, 200 y 100 caracteres.
-- El monto debe ser mayor que cero y admite hasta dos decimales. No se muestra símbolo de moneda porque el contrato no especifica una moneda.
+- El monto debe ser mayor que cero, admite hasta dos decimales y el formulario lo limita a 9,999,999,999,999.99 para evitar pérdida de precisión en el navegador. La API admite hasta 9999999999999999.99. No se muestra símbolo de moneda porque el contrato no especifica una moneda.
 - Las fechas de la API están en UTC y se presentan en la hora local del navegador.
 - El formulario y el detalle reaccionan si cambia el identificador de ruta mientras Angular reutiliza el componente.
 - El detalle carga el siniestro y el historial por separado. Un error del historial no oculta el siniestro y permite reintentar.

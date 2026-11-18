@@ -4,7 +4,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { catchError, distinctUntilChanged, EMPTY, map, merge, of, switchMap } from 'rxjs';
-import { getErrorMessages } from '../../../shared/http-error';
+import { getErrorMessages, isNotFoundError } from '../../../shared/http-error';
 import { readNavigationNotice } from '../../../shared/navigation-notice';
 import { parseRouteId } from '../../../shared/route-params';
 import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, Claim, ClaimStatus, ClaimStatusHistory } from '../../models/claim';
@@ -12,17 +12,17 @@ import { ClaimService } from '../../services/claim.service';
 
 type DetailLoadResult =
   | { kind: 'claim'; claim: Claim }
-  | { kind: 'claimError'; errors: string[] }
+  | { kind: 'claimError'; errors: string[]; retryable: boolean }
   | { kind: 'history'; history: ClaimStatusHistory[] }
-  | { kind: 'historyError'; errors: string[] };
+  | { kind: 'historyError'; errors: string[]; retryable: boolean };
 
 @Component({
   selector: 'app-claim-detail',
   imports: [ReactiveFormsModule, RouterLink, DatePipe, DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  templateUrl: './claim-detail.html',
+  templateUrl: './claim-detail.component.html',
 })
-export class ClaimDetail implements OnInit {
+export class ClaimDetailComponent implements OnInit {
   private readonly claimService = inject(ClaimService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -37,7 +37,9 @@ export class ClaimDetail implements OnInit {
   readonly loading = signal(true);
   readonly historyLoading = signal(true);
   readonly loadErrors = signal<string[]>([]);
+  readonly canRetryClaim = signal(false);
   readonly historyErrors = signal<string[]>([]);
+  readonly canRetryHistory = signal(false);
   readonly actionErrors = signal<string[]>([]);
   readonly notice = signal<string | null>(readNavigationNotice(this.router));
   readonly changingStatus = signal(false);
@@ -65,11 +67,13 @@ export class ClaimDetail implements OnInit {
       distinctUntilChanged(),
       switchMap((claimId, index) => {
         this.claimId = claimId ?? 0;
+        this.canRetryClaim.set(false);
         this.historyRefreshPending = false;
         this.claim.set(null);
         this.history.set([]);
         this.loadErrors.set([]);
         this.historyErrors.set([]);
+        this.canRetryHistory.set(false);
         this.actionErrors.set([]);
         if (index > 0) { this.notice.set(null); } // conservar el aviso de la navegación inicial
         this.changingStatus.set(false);
@@ -85,11 +89,19 @@ export class ClaimDetail implements OnInit {
         }
         const claim$ = this.claimService.getClaim(claimId).pipe(
           map((claim): DetailLoadResult => ({ kind: 'claim', claim })),
-          catchError((error: unknown) => of({ kind: 'claimError' as const, errors: getErrorMessages(error) })),
+          catchError((error: unknown) => of({
+            kind: 'claimError' as const,
+            errors: getErrorMessages(error),
+            retryable: !isNotFoundError(error),
+          })),
         );
         const history$ = this.claimService.getStatusHistory(claimId).pipe(
           map((history): DetailLoadResult => ({ kind: 'history', history })),
-          catchError((error: unknown) => of({ kind: 'historyError' as const, errors: getErrorMessages(error) })),
+          catchError((error: unknown) => of({
+            kind: 'historyError' as const,
+            errors: getErrorMessages(error),
+            retryable: !isNotFoundError(error),
+          })),
         );
         return merge(claim$, history$);
       }),
@@ -98,23 +110,51 @@ export class ClaimDetail implements OnInit {
       switch (result.kind) {
         case 'claim':
           this.claim.set(result.claim);
+          this.canRetryClaim.set(false);
           this.loading.set(false);
           break;
         case 'claimError':
           this.loadErrors.set(result.errors);
+          this.canRetryClaim.set(result.retryable);
           this.loading.set(false);
           break;
         case 'history':
           this.history.set(result.history);
+          this.canRetryHistory.set(false);
           this.historyLoading.set(false);
           this.refreshHistoryIfPending();
           break;
         case 'historyError':
           this.historyErrors.set(result.errors);
+          this.canRetryHistory.set(result.retryable);
           this.historyLoading.set(false);
           this.refreshHistoryIfPending();
           break;
       }
+    });
+  }
+
+  retryClaim(): void {
+    const claimId = this.claimId;
+    if (!claimId || this.loading()) {
+      return;
+    }
+
+    this.loading.set(true);
+    this.loadErrors.set([]);
+    this.claimService.getClaim(claimId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (claim) => {
+        if (this.claimId !== claimId) { return; }
+        this.claim.set(claim);
+        this.canRetryClaim.set(false);
+        this.loading.set(false);
+      },
+      error: (error: unknown) => {
+        if (this.claimId !== claimId) { return; }
+        this.loadErrors.set(getErrorMessages(error));
+        this.canRetryClaim.set(!isNotFoundError(error));
+        this.loading.set(false);
+      },
     });
   }
 
@@ -212,12 +252,14 @@ export class ClaimDetail implements OnInit {
       next: (history) => {
         if (this.claimId !== claimId) { return; }
         this.history.set(history);
+        this.canRetryHistory.set(false);
         this.historyLoading.set(false);
         this.refreshHistoryIfPending();
       },
       error: (error: unknown) => {
         if (this.claimId !== claimId) { return; }
         this.historyErrors.set(getErrorMessages(error));
+        this.canRetryHistory.set(!isNotFoundError(error));
         this.historyLoading.set(false);
         this.refreshHistoryIfPending();
       },

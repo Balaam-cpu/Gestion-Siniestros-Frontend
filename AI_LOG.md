@@ -122,3 +122,30 @@ Este archivo registra solo los prompts del frontend. Los del backend están en e
 ### Verificación
 
 - npm run build pasó después de integrar los ajustes de navegación, carga independiente del historial, conservación del aviso, mensaje HTTP 0 y recarga pendiente del historial. El build se ejecutó desde el entorno de trabajo.
+
+## Etapa 4  — Ajustes posteriores a la revisión exhaustiva del frontend (2026-11-17)
+
+### Prompt
+
+> Revisa el código que agregué y documenta esos cambios. En mi revisión encontré algunos ajustes que faltaban y los corregí.
+
+### Hallazgos
+
+- En su revisión, el usuario encontró que faltaba alinear el monto máximo con la API, permitir reintentar la carga inicial del detalle y de la edición, y confirmar la compilación después de renombrar las páginas.
+- Al revisar esos ajustes se detectó además que:
+  - El primer límite (`9_999_999_999_999_998`) superaba la precisión de `number` (unas 15 cifras significativas): un monto con decimales podía redondearse en el navegador y enviarse distinto de lo capturado.
+  - El botón de reintento también aparecía con un 404, aunque reintentar no sirve si el siniestro no existe.
+  - Había detalles de formato en `claim-form.component.ts` y validadores de mínimo y máximo duplicados entre el control y los atributos del campo.
+
+### Ajustes realizados
+
+- En `claim-form.component.ts` y `claim-form.component.html` el monto máximo quedó en `9_999_999_999_999.99` (15 cifras significativas), por debajo del tope decimal de la API, para que el valor se envíe sin pérdida de precisión. El mínimo (`min="0.01"`) y el máximo (`[max]`) se validan desde los atributos del campo, sin duplicarlos en el control, y el mensaje de validación muestra el límite.
+- En `claim-detail.component.ts` y `claim-detail.component.html` se agregó un reintento de la carga inicial del siniestro, disponible solo cuando el identificador de ruta es válido.
+- En `claim-form.component.ts` y `claim-form.component.html` se agregó un reintento de la carga inicial al editar, disponible para identificadores válidos.
+- Se agregó `isNotFoundError` en `shared/http-error.ts`: los reintentos del siniestro, del historial y de la edición no se ofrecen cuando la API responde 404, y se ocultan cuando una carga termina bien.
+- Se corrigió el formato en `claim-form.component.ts`.
+- En `README.md` se aclaró que el formulario limita el monto a 9,999,999,999,999.99 para evitar pérdida de precisión en el navegador y que la API admite hasta 9999999999999999.99.
+
+### Verificación
+
+- `npm run build -- --output-path="$env:TEMP\GestionSiniestrosFrontend-final-build"`: compilación correcta después de los cambios y renombres. La salida quedó en una carpeta temporal; no se sobrescribió `dist`.

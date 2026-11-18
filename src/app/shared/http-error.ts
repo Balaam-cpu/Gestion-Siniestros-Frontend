@@ -9,9 +9,10 @@ interface ApiProblemDetails {
 
 const DEFAULT_MESSAGE = 'Ocurrió un error inesperado. Intenta de nuevo.';
 
-/**
- * Convierte un error HTTP de la API (ProblemDetails) en mensajes para el usuario.
- */
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof HttpErrorResponse && error.status === 404;
+}
+
 export function getErrorMessages(error: unknown, notFoundMessage = 'El siniestro no existe o fue eliminado.'): string[] {
   if (!(error instanceof HttpErrorResponse)) {
     return [DEFAULT_MESSAGE];
