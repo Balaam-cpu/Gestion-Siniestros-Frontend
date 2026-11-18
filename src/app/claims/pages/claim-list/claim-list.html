@@ -1,0 +1,87 @@
+<div class="page-header">
+  <h1>Siniestros</h1>
+  <a class="btn btn-primary" routerLink="/claims/new">Nuevo siniestro</a>
+</div>
+
+@if (notice(); as message) {
+  <p class="alert alert-success" role="status">{{ message }}</p>
+}
+
+<form class="card" [formGroup]="filterForm" (ngSubmit)="search()">
+  <div class="form-grid">
+    <div class="field">
+      <label for="filter-policy-number">Número de póliza</label>
+      <input id="filter-policy-number" type="search" formControlName="policyNumber" placeholder="Inicia con..." />
+    </div>
+
+    <div class="field">
+      <label for="filter-status">Estado</label>
+      <select id="filter-status" formControlName="status">
+        <option value="">Todos</option>
+        @for (status of statuses; track status) {
+          <option [value]="status">{{ statusLabels[status] }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary" [disabled]="loading()">Buscar</button>
+      <button type="button" class="btn" [disabled]="loading()" (click)="clearFilters()">Limpiar</button>
+    </div>
+  </div>
+</form>
+
+@if (loading()) {
+  <p class="state" role="status">Cargando siniestros...</p>
+} @else if (errors().length) {
+  <div class="alert alert-error" role="alert">
+    @for (error of errors(); track $index) {
+      <p>{{ error }}</p>
+    }
+    <button type="button" class="btn btn-sm" (click)="search()">Reintentar</button>
+  </div>
+} @else if (!claims().length) {
+  <p class="state">
+    @if (hasFilters()) {
+      No hay siniestros que coincidan con la búsqueda.
+    } @else {
+      Aún no hay siniestros registrados.
+    }
+  </p>
+} @else {
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Póliza</th>
+          <th scope="col">Asegurado</th>
+          <th scope="col">Tipo</th>
+          <th scope="col" class="text-right">Monto estimado</th>
+          <th scope="col">Estado</th>
+          <th scope="col">Última actualización</th>
+          <th scope="col">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (claim of claims(); track claim.id) {
+          <tr>
+            <td>{{ claim.policyNumber }}</td>
+            <td>{{ claim.insuredName }}</td>
+            <td>{{ claim.claimType }}</td>
+            <td class="text-right">{{ claim.estimatedAmount | number: '1.2-2' }}</td>
+            <td>
+              <span class="badge" [attr.data-status]="claim.status">{{ statusLabels[claim.status] }}</span>
+            </td>
+            <td>{{ claim.updatedAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+            <td>
+              <div class="row-actions">
+                <a class="btn btn-sm" [routerLink]="['/claims', claim.id]">Ver</a>
+                <a class="btn btn-sm" [routerLink]="['/claims', claim.id, 'edit']">Editar</a>
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

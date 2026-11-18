@@ -1,0 +1,135 @@
+@if (loading()) {
+  <p class="state" role="status">Cargando siniestro...</p>
+} @else if (loadErrors().length) {
+  <div class="alert alert-error" role="alert">
+    @for (error of loadErrors(); track $index) {
+      <p>{{ error }}</p>
+    }
+    <a routerLink="/claims">Volver al listado</a>
+  </div>
+} @else if (claim(); as item) {
+  <div class="page-header">
+    <h1>Siniestro de la póliza {{ item.policyNumber }}</h1>
+    <div class="page-actions">
+      <a class="btn" routerLink="/claims">Volver al listado</a>
+      <a class="btn" [routerLink]="['/claims', item.id, 'edit']">Editar</a>
+      <button type="button" class="btn btn-danger" [disabled]="busy()" (click)="deleteClaim()">
+        {{ deleting() ? 'Eliminando...' : 'Eliminar' }}
+      </button>
+    </div>
+  </div>
+
+  @if (notice(); as message) {
+    <p class="alert alert-success" role="status">{{ message }}</p>
+  }
+
+  @if (actionErrors().length) {
+    <div class="alert alert-error" role="alert">
+      @for (error of actionErrors(); track $index) {
+        <p>{{ error }}</p>
+      }
+    </div>
+  }
+
+  <section class="card">
+    <dl class="details">
+      <dt>Número de póliza</dt>
+      <dd>{{ item.policyNumber }}</dd>
+
+      <dt>Asegurado</dt>
+      <dd>{{ item.insuredName }}</dd>
+
+      <dt>Tipo de siniestro</dt>
+      <dd>{{ item.claimType }}</dd>
+
+      <dt>Monto estimado</dt>
+      <dd>{{ item.estimatedAmount | number: '1.2-2' }}</dd>
+
+      <dt>Estado</dt>
+      <dd>
+        <span class="badge" [attr.data-status]="item.status">{{ statusLabels[item.status] }}</span>
+      </dd>
+
+      <dt>Creado</dt>
+      <dd>{{ item.createdAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
+
+      <dt>Última actualización</dt>
+      <dd>{{ item.updatedAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Cambiar estado</h2>
+    <form (submit)="$event.preventDefault(); changeStatus()">
+      <div class="form-grid">
+        <div class="field">
+          <label for="newStatus">Nuevo estado</label>
+          <select
+            id="newStatus"
+            [formControl]="statusControl"
+            [class.invalid]="statusControl.touched && statusControl.invalid"
+          >
+            <option value="" disabled>Selecciona un estado</option>
+            @for (status of availableStatuses(); track status) {
+              <option [value]="status">{{ statusLabels[status] }}</option>
+            }
+          </select>
+          @if (statusControl.touched && statusControl.invalid) {
+            <p class="field-error">Selecciona el nuevo estado.</p>
+          }
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" [disabled]="busy()">
+            {{ changingStatus() ? 'Actualizando...' : 'Cambiar estado' }}
+          </button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Historial de estados</h2>
+
+    @if (historyErrors().length) {
+      <div class="alert alert-error" role="alert">
+        @for (error of historyErrors(); track $index) {
+          <p>{{ error }}</p>
+        }
+      </div>
+    }
+
+    @if (!history().length) {
+      <p class="state">Sin cambios de estado registrados.</p>
+    } @else {
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Fecha</th>
+              <th scope="col">Estado anterior</th>
+              <th scope="col">Nuevo estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (event of history(); track event.id) {
+              <tr>
+                <td>{{ event.changedAt | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+                <td>
+                  @if (event.previousStatus; as previous) {
+                    <span class="badge" [attr.data-status]="previous">{{ statusLabels[previous] }}</span>
+                  } @else {
+                    — (registro inicial)
+                  }
+                </td>
+                <td>
+                  <span class="badge" [attr.data-status]="event.newStatus">{{ statusLabels[event.newStatus] }}</span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+}
