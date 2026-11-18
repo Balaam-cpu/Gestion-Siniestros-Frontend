@@ -1,101 +1,128 @@
-# Gestion-Siniestros-Frontend
-Prueba técnica Zurich, Frontend
+# Gestor de Siniestros — Frontend
 
-Aplicación Angular para registrar y dar seguimiento a siniestros. Consume la API de `Gestion-Siniestros-Api`.
+Prueba técnica Zurich. Aplicación Angular para registrar y dar seguimiento a siniestros mediante la API de Gestion-Siniestros-Api.
 
-## Requisitos previos
+## Resumen para revisión
 
-- Node.js `^20.19.0`, `^22.12.0` o `>=24.0.0` (recomendado: 22 o 24 LTS). Angular 21 no funciona con Node 16.
-- npm (incluido con Node).
-- La API corriendo en `https://localhost:7080` con el certificado de desarrollo de confianza (`dotnet dev-certs https --trust`).
+- Angular 21 con componentes standalone y rutas de carga diferida.
+- Formularios reactivos con validaciones alineadas con la API.
+- Datos reales desde la API; no se usan respuestas mock ni almacenamiento local.
+- El servicio, modelos y utilidades compartidas están separados de las páginas de listado, formulario y detalle.
+- Los estados de carga, errores, resultados vacíos y confirmaciones se muestran en la interfaz.
+- El estado se mantiene por pantalla con signals; no se agrega un store global para este alcance.
+
+## Evidencia de uso de IA
+
+El archivo [AI_LOG.md](AI_LOG.md) registra los prompts, las decisiones aceptadas y rechazadas, y las correcciones realizadas durante la revisión.
+
+## Requisitos
+
+- Node.js: ^20.19.0, ^22.12.0 o >=24.0.0, según el campo engines de package.json.
+- npm.
+- La API de Gestion-Siniestros-Api ejecutándose en https://localhost:7080.
+- Certificado HTTPS de desarrollo confiable. Si hace falta, ejecutar: dotnet dev-certs https --trust.
+
+### Iniciar la API
+
+Desde el proyecto GestionSiniestros.Api del repositorio backend:
+
+    dotnet run --launch-profile https
+
+La API debe tener SQL Server configurado y sus migraciones aplicadas. Consulta el README del backend para esos pasos. La configuración CORS de desarrollo de la API debe permitir http://localhost:4200.
 
 ## Instalación y ejecución
 
-```powershell
-npm install
-npm start          # ng serve, http://localhost:4200
-npm run build      # build de producción en dist/
-```
+Desde la raíz de este repositorio:
+
+    npm install
+    npm start
+
+La aplicación queda disponible en http://localhost:4200. Para compilar la versión de producción:
+
+    npm run build
 
 ## Configuración de la API
 
-La URL base está centralizada en `src/environments`:
+La URL base se define en src/environments:
 
-| Archivo | Uso | `apiUrl` |
-| ------- | --- | -------- |
-| `environment.development.ts` | `ng serve` (configuración development) | `https://localhost:7080/api/v1` |
-| `environment.ts` | `ng build` (configuración production) | `/api/v1` (ajustar al desplegar) |
+| Archivo | Uso | URL base |
+| --- | --- | --- |
+| environment.development.ts | npm start / ng serve | https://localhost:7080/api/v1 |
+| environment.ts | npm run build | /api/v1 |
 
-El origen `http://localhost:4200` ya está permitido en el CORS de desarrollo de la API.
+En producción, /api/v1 debe apuntar a la API mediante el mismo origen o un proxy inverso. Ajusta la URL de environment.ts si el despliegue usa otra dirección.
 
-## Estructura
+## Organización
 
-```
-src/
-  environments/                 URL de la API por entorno
-  app/
-    app.config.ts               Providers: router, HttpClient, zoneless
-    app.routes.ts               Rutas principales (carga diferida)
-    claims/
-      models/claim.ts           Contratos JSON y etiquetas de estado
-      services/claim.service.ts Llamadas HTTP a /claims
-      pages/
-        claim-list/             Listado con búsqueda y filtro
-        claim-form/             Alta y edición con validaciones
-        claim-detail/           Detalle, historial, cambio de estado y eliminación
-    shared/
-      http-error.ts             Mensajes de error a partir de ProblemDetails de la API
-      navigation-notice.ts      Mensajes de confirmación entre pantallas
-      route-params.ts           Validación del :id de la ruta
-```
+    src/
+      environments/                 URL de la API por entorno
+      app/
+        app.config.ts               Providers de router, HttpClient y zoneless
+        app.routes.ts               Rutas con carga diferida
+        claims/
+          models/claim.ts           Contratos JSON y etiquetas de estado
+          services/claim.service.ts Llamadas HTTP a la API
+          pages/
+            claim-list/             Listado, búsqueda y filtro
+            claim-form/             Alta y edición con validaciones
+            claim-detail/           Detalle, historial y acciones
+        shared/
+          http-error.ts             Conversión de errores HTTP para la interfaz
+          navigation-notice.ts      Mensajes de confirmación entre pantallas
+          route-params.ts           Validación del identificador de ruta
 
-## Rutas
+## Pantallas y rutas
 
-| Ruta | Pantalla |
-| ---- | -------- |
-| `/claims` | Listado |
-| `/claims/new` | Formulario de alta |
-| `/claims/:id` | Detalle con historial |
-| `/claims/:id/edit` | Formulario de edición |
+| Ruta | Funcionalidad |
+| --- | --- |
+| /claims | Lista siniestros y filtra por prefijo de póliza y estado |
+| /claims/new | Registra un siniestro |
+| /claims/:id | Consulta detalle e historial, cambia estado y elimina |
+| /claims/:id/edit | Edita los datos del siniestro |
 
-Cualquier otra ruta redirige a `/claims`.
+Las rutas desconocidas redirigen al listado.
 
-## Estados
+## Operaciones de API utilizadas
 
-| Valor API | Etiqueta en la interfaz |
-| --------- | ----------------------- |
-| `Open` | Abierto |
-| `InReview` | En revisión |
-| `Closed` | Cerrado |
+| Método | Ruta | Uso |
+| --- | --- | --- |
+| GET | /api/v1/claims | Lista; acepta policyNumber y status como filtros |
+| GET | /api/v1/claims/{id} | Consulta un siniestro |
+| POST | /api/v1/claims | Crea un siniestro |
+| PUT | /api/v1/claims/{id} | Actualiza sus datos |
+| PATCH | /api/v1/claims/{id}/status | Cambia su estado |
+| DELETE | /api/v1/claims/{id} | Elimina el siniestro |
+| GET | /api/v1/claims/{id}/status-history | Consulta su historial de estados |
 
-## Funcionalidades
+## Contrato y comportamiento
 
-- **Listado** (`/claims`): búsqueda por número de póliza (coincidencia por prefijo) combinable con el filtro por estado.
-  Muestra estados de carga, error con opción de reintentar y lista vacía (con o sin filtros).
-- **Formulario** (`/claims/new` y `/claims/:id/edit`): mismas reglas que la API (campos obligatorios, longitudes
-  máximas de 50/200/100, monto mayor que cero con máximo dos decimales). Los errores se muestran por campo al salir de él
-  o al guardar; si la API rechaza los datos, se muestran sus mensajes.
-- **Detalle** (`/claims/:id`): datos del siniestro, historial de estados (el evento inicial aparece como "registro inicial"),
-  cambio de estado (solo ofrece estados distintos al actual) y eliminación con confirmación.
-- Mensajes de confirmación al crear, guardar, cambiar estado y eliminar.
-- Los estados se muestran en español; a la API siempre se envían los valores del contrato (`Open`, `InReview`, `Closed`).
-- Las fechas llegan en UTC y se muestran en la hora local del navegador.
-- Errores de la API: sin conexión, 404, validaciones 400 y el 500 genérico con su `traceId`.
+| Valor enviado a la API | Etiqueta mostrada |
+| --- | --- |
+| Open | Abierto |
+| InReview | En revisión |
+| Closed | Cerrado |
 
-## Revisión manual
+- La búsqueda por póliza coincide desde el inicio del número y se puede combinar con el filtro por estado.
+- Los campos de texto son obligatorios, se recortan espacios externos y respetan las longitudes de la API: 50, 200 y 100 caracteres.
+- El monto debe ser mayor que cero y admite hasta dos decimales. No se muestra símbolo de moneda porque el contrato no especifica una moneda.
+- Las fechas de la API están en UTC y se presentan en la hora local del navegador.
+- El formulario y el detalle reaccionan si cambia el identificador de ruta mientras Angular reutiliza el componente.
+- El detalle carga el siniestro y el historial por separado. Un error del historial no oculta el siniestro y permite reintentar.
+- Los mensajes de error contemplan fallos de conexión, 404, validaciones 400 y errores de servidor con traceId cuando está disponible.
 
-Con la API en `https://localhost:7080` y `npm start`, abre `http://localhost:4200`:
+## Guía de revisión manual
 
-1. **Crear:** "Nuevo siniestro" → intenta guardar vacío (deben verse los errores por campo) y con monto `0` o `10.555`.
-   Luego captura datos válidos y guarda: debe abrir el detalle con "Siniestro creado correctamente.", estado
-   Abierto y un evento "registro inicial" en el historial.
-2. **Buscar:** en el listado escribe el inicio de un número de póliza y presiona "Buscar"; combina con el filtro
-   de estado. Una búsqueda sin resultados muestra "No hay siniestros que coincidan con la búsqueda.". "Limpiar"
-   restablece el listado.
-3. **Editar:** "Editar" desde el listado o el detalle → cambia datos y guarda: debe mostrar "Cambios guardados
-   correctamente." y la nueva fecha de última actualización.
-4. **Cambiar estado:** en el detalle elige "En revisión" y luego "Cerrado": el estado y el historial se actualizan
-   con estado anterior, nuevo y fecha.
-5. **Eliminar:** "Eliminar" → confirma: regresa al listado con "Siniestro eliminado correctamente." y el siniestro
-   ya no aparece. Abrir su URL de detalle debe mostrar "El siniestro no existe o fue eliminado.".
-6. **Errores:** con la API detenida, recarga el listado: debe mostrar "No se pudo conectar con la API..." y "Reintentar".
+Con SQL Server, la API y la aplicación activos:
+
+1. Abre el listado y confirma que aparece el estado vacío o la lista existente.
+2. Intenta crear un siniestro vacío, con monto 0 y con monto 10.555; revisa los errores de validación. Después crea uno válido y confirma el estado Abierto y el evento inicial del historial.
+3. Busca por el inicio de un número de póliza y combina la búsqueda con un estado. Usa Limpiar para restablecer los filtros.
+4. Edita un siniestro y confirma que se muestra el mensaje de éxito y la fecha de actualización nueva.
+5. Cambia el estado a En revisión y luego a Cerrado; revisa que el historial muestre los eventos y sus fechas.
+6. Elimina un siniestro, confirma la acción y revisa el mensaje en el listado. Si abres su URL anterior, la pantalla debe informar que no existe.
+7. Detén la API y vuelve a cargar el listado para revisar el mensaje de conexión y la opción Reintentar.
+
+## Validación
+
+- Compilación de producción: npm run build (verificado).
+- Para recorrer el flujo completo contra la API, sigue la guía de revisión manual anterior con SQL Server y la API activos.

@@ -91,15 +91,16 @@
   <section class="card">
     <h2>Historial de estados</h2>
 
-    @if (historyErrors().length) {
+    @if (historyLoading()) {
+      <p class="state" role="status">Cargando historial...</p>
+    } @else if (historyErrors().length) {
       <div class="alert alert-error" role="alert">
         @for (error of historyErrors(); track $index) {
           <p>{{ error }}</p>
         }
+        <button type="button" class="btn btn-sm" (click)="retryHistory()">Reintentar historial</button>
       </div>
-    }
-
-    @if (!history().length) {
+    } @else if (!history().length) {
       <p class="state">Sin cambios de estado registrados.</p>
     } @else {
       <div class="table-wrapper">

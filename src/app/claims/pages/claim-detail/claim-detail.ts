@@ -1,14 +1,20 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, input, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { catchError, distinctUntilChanged, EMPTY, map, merge, of, switchMap } from 'rxjs';
 import { getErrorMessages } from '../../../shared/http-error';
 import { readNavigationNotice } from '../../../shared/navigation-notice';
 import { parseRouteId } from '../../../shared/route-params';
 import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, Claim, ClaimStatus, ClaimStatusHistory } from '../../models/claim';
 import { ClaimService } from '../../services/claim.service';
+
+type DetailLoadResult =
+  | { kind: 'claim'; claim: Claim }
+  | { kind: 'claimError'; errors: string[] }
+  | { kind: 'history'; history: ClaimStatusHistory[] }
+  | { kind: 'historyError'; errors: string[] };
 
 @Component({
   selector: 'app-claim-detail',
@@ -22,12 +28,14 @@ export class ClaimDetail implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly id = input.required<string>();
+  private readonly id$ = toObservable(this.id);
 
   readonly statusLabels = CLAIM_STATUS_LABELS;
 
   readonly claim = signal<Claim | null>(null);
   readonly history = signal<ClaimStatusHistory[]>([]);
   readonly loading = signal(true);
+  readonly historyLoading = signal(true);
   readonly loadErrors = signal<string[]>([]);
   readonly historyErrors = signal<string[]>([]);
   readonly actionErrors = signal<string[]>([]);
@@ -49,43 +57,70 @@ export class ClaimDetail implements OnInit {
   });
 
   private claimId = 0;
+  private historyRefreshPending = false;
 
   ngOnInit(): void {
-    const claimId = parseRouteId(this.id());
-    if (claimId === null) {
-      this.loadErrors.set(['El identificador del siniestro no es válido.']);
-      this.loading.set(false);
-      return;
-    }
-
-    this.claimId = claimId;
-    this.load();
-  }
-
-  load(): void {
-    this.loading.set(true);
-    this.loadErrors.set([]);
-
-    forkJoin({
-      claim: this.claimService.getClaim(this.claimId),
-      history: this.claimService.getStatusHistory(this.claimId),
-    })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: ({ claim, history }) => {
-          this.claim.set(claim);
-          this.history.set(history);
+    this.id$.pipe(
+      map(parseRouteId),
+      distinctUntilChanged(),
+      switchMap((claimId, index) => {
+        this.claimId = claimId ?? 0;
+        this.historyRefreshPending = false;
+        this.claim.set(null);
+        this.history.set([]);
+        this.loadErrors.set([]);
+        this.historyErrors.set([]);
+        this.actionErrors.set([]);
+        if (index > 0) { this.notice.set(null); } // conservar el aviso de la navegación inicial
+        this.changingStatus.set(false);
+        this.deleting.set(false);
+        this.statusControl.reset('');
+        this.loading.set(claimId !== null);
+        this.historyLoading.set(claimId !== null);
+        if (claimId === null) {
+          this.loadErrors.set(['El identificador del siniestro no es válido.']);
           this.loading.set(false);
-        },
-        error: (error: unknown) => {
-          this.loadErrors.set(getErrorMessages(error));
+          this.historyLoading.set(false);
+          return EMPTY;
+        }
+        const claim$ = this.claimService.getClaim(claimId).pipe(
+          map((claim): DetailLoadResult => ({ kind: 'claim', claim })),
+          catchError((error: unknown) => of({ kind: 'claimError' as const, errors: getErrorMessages(error) })),
+        );
+        const history$ = this.claimService.getStatusHistory(claimId).pipe(
+          map((history): DetailLoadResult => ({ kind: 'history', history })),
+          catchError((error: unknown) => of({ kind: 'historyError' as const, errors: getErrorMessages(error) })),
+        );
+        return merge(claim$, history$);
+      }),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((result) => {
+      switch (result.kind) {
+        case 'claim':
+          this.claim.set(result.claim);
           this.loading.set(false);
-        },
-      });
+          break;
+        case 'claimError':
+          this.loadErrors.set(result.errors);
+          this.loading.set(false);
+          break;
+        case 'history':
+          this.history.set(result.history);
+          this.historyLoading.set(false);
+          this.refreshHistoryIfPending();
+          break;
+        case 'historyError':
+          this.historyErrors.set(result.errors);
+          this.historyLoading.set(false);
+          this.refreshHistoryIfPending();
+          break;
+      }
+    });
   }
 
   changeStatus(): void {
     const newStatus = this.statusControl.value;
+    const claimId = this.claimId;
     if (this.busy() || !this.claim()) {
       return;
     }
@@ -99,17 +134,19 @@ export class ClaimDetail implements OnInit {
     this.notice.set(null);
 
     this.claimService
-      .changeStatus(this.claimId, newStatus)
+      .changeStatus(claimId, newStatus)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (claim) => {
+          if (this.claimId !== claimId) { return; }
           this.claim.set(claim);
           this.statusControl.reset();
           this.changingStatus.set(false);
           this.notice.set(`Estado actualizado a "${this.statusLabels[claim.status]}".`);
-          this.reloadHistory();
+          this.loadHistory(claimId);
         },
         error: (error: unknown) => {
+          if (this.claimId !== claimId) { return; }
           this.actionErrors.set(getErrorMessages(error));
           this.changingStatus.set(false);
         },
@@ -118,6 +155,7 @@ export class ClaimDetail implements OnInit {
 
   deleteClaim(): void {
     const claim = this.claim();
+    const claimId = this.claimId;
     if (this.busy() || !claim) {
       return;
     }
@@ -134,28 +172,55 @@ export class ClaimDetail implements OnInit {
     this.notice.set(null);
 
     this.claimService
-      .deleteClaim(this.claimId)
+      .deleteClaim(claimId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
+          if (this.claimId !== claimId) { return; }
           void this.router.navigate(['/claims'], { state: { notice: 'Siniestro eliminado correctamente.' } });
         },
         error: (error: unknown) => {
+          if (this.claimId !== claimId) { return; }
           this.actionErrors.set(getErrorMessages(error));
           this.deleting.set(false);
         },
       });
   }
 
-  private reloadHistory(): void {
-    this.historyErrors.set([]);
+  private refreshHistoryIfPending(): void {
+    if (!this.historyRefreshPending) { return; }
+    this.historyRefreshPending = false;
+    this.loadHistory(this.claimId);
+  }
 
-    this.claimService
-      .getStatusHistory(this.claimId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (history) => this.history.set(history),
-        error: (error: unknown) => this.historyErrors.set(getErrorMessages(error)),
-      });
+  retryHistory(): void {
+    this.loadHistory(this.claimId);
+  }
+
+  private loadHistory(claimId: number): void {
+    if (!claimId) {
+      return;
+    }
+    if (this.historyLoading()) {
+      this.historyRefreshPending = true;
+      return;
+    }
+
+    this.historyLoading.set(true);
+    this.historyErrors.set([]);
+    this.claimService.getStatusHistory(claimId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (history) => {
+        if (this.claimId !== claimId) { return; }
+        this.history.set(history);
+        this.historyLoading.set(false);
+        this.refreshHistoryIfPending();
+      },
+      error: (error: unknown) => {
+        if (this.claimId !== claimId) { return; }
+        this.historyErrors.set(getErrorMessages(error));
+        this.historyLoading.set(false);
+        this.refreshHistoryIfPending();
+      },
+    });
   }
 }

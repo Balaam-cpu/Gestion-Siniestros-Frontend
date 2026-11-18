@@ -18,7 +18,7 @@ export function getErrorMessages(error: unknown, notFoundMessage = 'El siniestro
   }
 
   if (error.status === 0) {
-    return ['No se pudo conectar con la API. Verifica que esté en ejecución.'];
+    return ['No se pudo establecer conexión con la API. Inténtalo de nuevo.'];
   }
 
   if (error.status === 404) {

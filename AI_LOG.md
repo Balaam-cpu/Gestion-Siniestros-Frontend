@@ -94,3 +94,31 @@ Este archivo registra solo los prompts del frontend. Los del backend están en e
 ### Verificación
 
 - El asistente NO ejecutó `ng build` (sin terminal en el equipo y sin paquetes de Angular ni red en su entorno). La compilación está pendiente del usuario.
+
+## Etapa 3 — Defecto: fuga de estado/datos entre siniestros en la interfaz (2026-11-17)
+
+### Defecto
+
+- Fuga de estado/datos en la interfaz: el detalle y el formulario leían el `id` solo en `ngOnInit`. Como el router reutiliza el componente al navegar entre siniestros de la misma ruta (`/claims/1` → `/claims/2`, `/claims/1/edit` → `/claims/2/edit`), la pantalla podía seguir mostrando el siniestro anterior, y una acción (guardar, cambiar estado, eliminar) podía aplicarse sobre él. Una respuesta tardía del siniestro anterior también podía sobrescribir la pantalla actual.
+- No es un incidente de seguridad: era un error de sincronización del estado de la interfaz con la ruta.
+
+### Corrección (implementada por el usuario, validada por el asistente)
+
+- Ambas páginas reaccionan al `input` del `id` con `toObservable` + `distinctUntilChanged` + `switchMap`: en cada cambio se reinicia el estado de la pantalla y se cancela la carga anterior.
+- Las respuestas de guardar, cambiar estado, eliminar y recargar historial se descartan si el `id` actual ya no es el de la solicitud.
+- El detalle carga el siniestro y el historial por separado (`merge`): si falla el historial, los datos del siniestro siguen visibles y el error aparece solo en la sección del historial, con el botón "Reintentar historial".
+- Se conserva el comportamiento para identificadores inválidos y para los errores de la API.
+
+### Ajustes del asistente en la validación
+
+- El mensaje de confirmación de la navegación (por ejemplo, "Siniestro creado correctamente.") se borraba en la primera carga; ahora solo se limpia al cambiar a otro siniestro.
+- El mensaje para status 0 ya no supone la causa: "No se pudo establecer conexión con la API. Inténtalo de nuevo." (status 0 también ocurre con la API detenida, CORS o el certificado).
+
+### Recarga del historial durante una carga en curso (corregido por el usuario)
+
+- Caso detectado en la validación: si se cambiaba el estado mientras aún cargaba el historial inicial, la recarga se omitía y el nuevo evento podía no mostrarse hasta recargar la página.
+- Corrección: `loadHistory` marca la recarga como pendiente (`historyRefreshPending`) cuando ya hay una carga en curso, y `refreshHistoryIfPending()` la ejecuta al terminar cualquier carga del historial (inicial o recarga, con éxito o error). El indicador se reinicia al cambiar de siniestro.
+
+### Verificación
+
+- npm run build pasó después de integrar los ajustes de navegación, carga independiente del historial, conservación del aviso, mensaje HTTP 0 y recarga pendiente del historial. El build se ejecutó desde el entorno de trabajo.
