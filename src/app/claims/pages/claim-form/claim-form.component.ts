@@ -3,17 +3,20 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { AbstractControl, NonNullableFormBuilder, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { catchError, distinctUntilChanged, EMPTY, map, of, switchMap } from 'rxjs';
-import { getErrorMessages } from '../../../shared/http-error';
+import { getErrorMessages, isNotFoundError } from '../../../shared/http-error';
 import { parseRouteId } from '../../../shared/route-params';
 import { Claim, SaveClaimRequest } from '../../models/claim';
 import { ClaimService } from '../../services/claim.service';
 
 type ClaimField = 'policyNumber' | 'insuredName' | 'claimType' | 'estimatedAmount';
 
-type ClaimLoadResult = { claimId: number; claim: Claim } | { claimId: number; errors: string[] };
+type ClaimLoadResult =
+  | { claimId: number; claim: Claim }
+  | { claimId: number; errors: string[]; retryable: boolean };
 
 // Mismas reglas que valida la API (SaveClaimRequest del backend).
 const MAX_LENGTHS = { policyNumber: 50, insuredName: 200, claimType: 100 } as const;
+const MAX_ESTIMATED_AMOUNT = 9_999_999_999_999.99;
 
 const FIELD_LABELS: Record<ClaimField, string> = {
   policyNumber: 'El número de póliza',
@@ -38,9 +41,9 @@ function maxTwoDecimals(control: AbstractControl<number | null>): ValidationErro
   selector: 'app-claim-form',
   imports: [ReactiveFormsModule, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  templateUrl: './claim-form.html',
+  templateUrl: './claim-form.component.html',
 })
-export class ClaimForm implements OnInit {
+export class ClaimFormComponent implements OnInit {
   private readonly claimService = inject(ClaimService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -54,6 +57,8 @@ export class ClaimForm implements OnInit {
   readonly saving = signal(false);
   readonly loadErrors = signal<string[]>([]);
   readonly saveErrors = signal<string[]>([]);
+  readonly canRetryLoad = signal(false);
+  readonly maxEstimatedAmount = MAX_ESTIMATED_AMOUNT;
 
   private claimId: number | null = null;
 
@@ -61,7 +66,7 @@ export class ClaimForm implements OnInit {
     policyNumber: this.fb.control('', [requiredText, Validators.maxLength(MAX_LENGTHS.policyNumber)]),
     insuredName: this.fb.control('', [requiredText, Validators.maxLength(MAX_LENGTHS.insuredName)]),
     claimType: this.fb.control('', [requiredText, Validators.maxLength(MAX_LENGTHS.claimType)]),
-    estimatedAmount: this.fb.control<number | null>(null, [Validators.required, Validators.min(0.01), maxTwoDecimals]),
+    estimatedAmount: this.fb.control<number | null>(null, [Validators.required, maxTwoDecimals]),
   });
 
   ngOnInit(): void {
@@ -69,11 +74,15 @@ export class ClaimForm implements OnInit {
       distinctUntilChanged(),
       switchMap((routeId) => {
         this.claimId = null;
+        this.canRetryLoad.set(false);
         this.form.reset({ policyNumber: '', insuredName: '', claimType: '', estimatedAmount: null });
         this.loadErrors.set([]);
         this.saveErrors.set([]);
         this.saving.set(false);
-        if (routeId === undefined) { this.loading.set(false); return EMPTY; }
+        if (routeId === undefined) {
+          this.loading.set(false);
+          return EMPTY;
+        }
         const claimId = parseRouteId(routeId);
         if (claimId === null) {
           this.loadErrors.set(['El identificador del siniestro no es válido.']);
@@ -84,13 +93,18 @@ export class ClaimForm implements OnInit {
         this.loading.set(true);
         return this.claimService.getClaim(claimId).pipe(
           map((claim): ClaimLoadResult => ({ claimId, claim })),
-          catchError((error: unknown) => of({ claimId, errors: getErrorMessages(error) })),
+          catchError((error: unknown) => of({
+            claimId,
+            errors: getErrorMessages(error),
+            retryable: !isNotFoundError(error),
+          })),
         );
       }),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe((result) => {
       if (result.claimId !== this.claimId) { return; }
       if ('claim' in result) {
+        this.canRetryLoad.set(false);
         this.form.setValue({
           policyNumber: result.claim.policyNumber,
           insuredName: result.claim.insuredName,
@@ -99,8 +113,38 @@ export class ClaimForm implements OnInit {
         });
       } else {
         this.loadErrors.set(result.errors);
+        this.canRetryLoad.set(result.retryable);
       }
       this.loading.set(false);
+    });
+  }
+
+  retryLoad(): void {
+    const claimId = this.claimId;
+    if (claimId === null || this.loading()) {
+      return;
+    }
+
+    this.loading.set(true);
+    this.loadErrors.set([]);
+    this.claimService.getClaim(claimId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (claim) => {
+        if (this.claimId !== claimId) { return; }
+        this.canRetryLoad.set(false);
+        this.form.setValue({
+          policyNumber: claim.policyNumber,
+          insuredName: claim.insuredName,
+          claimType: claim.claimType,
+          estimatedAmount: claim.estimatedAmount,
+        });
+        this.loading.set(false);
+      },
+      error: (error: unknown) => {
+        if (this.claimId !== claimId) { return; }
+        this.loadErrors.set(getErrorMessages(error));
+        this.canRetryLoad.set(!isNotFoundError(error));
+        this.loading.set(false);
+      },
     });
   }
 
@@ -121,6 +165,9 @@ export class ClaimForm implements OnInit {
     }
     if (errors['min']) {
       return `${label} debe ser mayor que cero.`;
+    }
+    if (errors['max']) {
+      return `${label} no puede exceder ${MAX_ESTIMATED_AMOUNT.toLocaleString('es-MX')}.`;
     }
     if (errors['decimals']) {
       return `${label} admite como máximo dos decimales.`;
@@ -148,16 +195,16 @@ export class ClaimForm implements OnInit {
 
     const claimId = this.claimId;
     const isNew = claimId === null;
-    const save$ = isNew
-      ? this.claimService.createClaim(request)
-      : this.claimService.updateClaim(claimId as number, request);
+    const save$ = isNew ? this.claimService.createClaim(request) : this.claimService.updateClaim(claimId as number, request);
 
     this.saving.set(true);
     this.saveErrors.set([]);
 
     save$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (claim) => {
-        if (this.claimId !== claimId) { return; }
+        if (this.claimId !== claimId) {
+          return;
+        }
         const notice = isNew ? 'Siniestro creado correctamente.' : 'Cambios guardados correctamente.';
         void this.router.navigate(['/claims', claim.id], { state: { notice } });
       },

@@ -10,6 +10,9 @@
     @for (error of loadErrors(); track $index) {
       <p>{{ error }}</p>
     }
+    @if (canRetryLoad()) {
+      <button type="button" class="btn btn-sm" (click)="retryLoad()">Reintentar</button>
+    }
     <a routerLink="/claims">Volver al listado</a>
   </div>
 } @else {
@@ -79,6 +82,7 @@
           inputmode="decimal"
           step="0.01"
           min="0.01"
+          [max]="maxEstimatedAmount"
           formControlName="estimatedAmount"
           [class.invalid]="fieldError('estimatedAmount')"
           [attr.aria-invalid]="!!fieldError('estimatedAmount')"

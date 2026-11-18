@@ -12,9 +12,9 @@ import { ClaimService } from '../../services/claim.service';
   selector: 'app-claim-list',
   imports: [ReactiveFormsModule, RouterLink, DatePipe, DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  templateUrl: './claim-list.html',
+  templateUrl: './claim-list.component.html',
 })
-export class ClaimList {
+export class ClaimListComponent {
   private readonly claimService = inject(ClaimService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly fb = inject(NonNullableFormBuilder);

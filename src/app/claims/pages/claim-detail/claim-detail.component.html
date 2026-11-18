@@ -5,6 +5,9 @@
     @for (error of loadErrors(); track $index) {
       <p>{{ error }}</p>
     }
+    @if (canRetryClaim()) {
+      <button type="button" class="btn btn-sm" (click)="retryClaim()">Reintentar</button>
+    }
     <a routerLink="/claims">Volver al listado</a>
   </div>
 } @else if (claim(); as item) {
@@ -98,7 +101,9 @@
         @for (error of historyErrors(); track $index) {
           <p>{{ error }}</p>
         }
-        <button type="button" class="btn btn-sm" (click)="retryHistory()">Reintentar historial</button>
+        @if (canRetryHistory()) {
+          <button type="button" class="btn btn-sm" (click)="retryHistory()">Reintentar historial</button>
+        }
       </div>
     } @else if (!history().length) {
       <p class="state">Sin cambios de estado registrados.</p>
