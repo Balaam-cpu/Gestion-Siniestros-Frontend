@@ -1,0 +1,99 @@
+<div class="page-header">
+  <h1>{{ isEdit() ? 'Editar siniestro' : 'Nuevo siniestro' }}</h1>
+  <a class="btn" [routerLink]="isEdit() && !loadErrors().length ? ['/claims', id()] : '/claims'">Cancelar</a>
+</div>
+
+@if (loading()) {
+  <p class="state" role="status">Cargando siniestro...</p>
+} @else if (loadErrors().length) {
+  <div class="alert alert-error" role="alert">
+    @for (error of loadErrors(); track $index) {
+      <p>{{ error }}</p>
+    }
+    <a routerLink="/claims">Volver al listado</a>
+  </div>
+} @else {
+  <form class="card" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    @if (saveErrors().length) {
+      <div class="alert alert-error" role="alert">
+        @for (error of saveErrors(); track $index) {
+          <p>{{ error }}</p>
+        }
+      </div>
+    }
+
+    <div class="form-grid">
+      <div class="field">
+        <label for="policyNumber">Número de póliza *</label>
+        <input
+          id="policyNumber"
+          type="text"
+          formControlName="policyNumber"
+          autocomplete="off"
+          [class.invalid]="fieldError('policyNumber')"
+          [attr.aria-invalid]="!!fieldError('policyNumber')"
+          aria-describedby="policyNumber-error"
+        />
+        @if (fieldError('policyNumber'); as message) {
+          <p id="policyNumber-error" class="field-error">{{ message }}</p>
+        }
+      </div>
+
+      <div class="field">
+        <label for="insuredName">Nombre del asegurado *</label>
+        <input
+          id="insuredName"
+          type="text"
+          formControlName="insuredName"
+          autocomplete="off"
+          [class.invalid]="fieldError('insuredName')"
+          [attr.aria-invalid]="!!fieldError('insuredName')"
+          aria-describedby="insuredName-error"
+        />
+        @if (fieldError('insuredName'); as message) {
+          <p id="insuredName-error" class="field-error">{{ message }}</p>
+        }
+      </div>
+
+      <div class="field">
+        <label for="claimType">Tipo de siniestro *</label>
+        <input
+          id="claimType"
+          type="text"
+          formControlName="claimType"
+          autocomplete="off"
+          [class.invalid]="fieldError('claimType')"
+          [attr.aria-invalid]="!!fieldError('claimType')"
+          aria-describedby="claimType-error"
+        />
+        @if (fieldError('claimType'); as message) {
+          <p id="claimType-error" class="field-error">{{ message }}</p>
+        }
+      </div>
+
+      <div class="field">
+        <label for="estimatedAmount">Monto estimado *</label>
+        <input
+          id="estimatedAmount"
+          type="number"
+          inputmode="decimal"
+          step="0.01"
+          min="0.01"
+          formControlName="estimatedAmount"
+          [class.invalid]="fieldError('estimatedAmount')"
+          [attr.aria-invalid]="!!fieldError('estimatedAmount')"
+          aria-describedby="estimatedAmount-error"
+        />
+        @if (fieldError('estimatedAmount'); as message) {
+          <p id="estimatedAmount-error" class="field-error">{{ message }}</p>
+        }
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary" [disabled]="saving()">
+        {{ saving() ? 'Guardando...' : isEdit() ? 'Guardar cambios' : 'Crear siniestro' }}
+      </button>
+    </div>
+  </form>
+}
